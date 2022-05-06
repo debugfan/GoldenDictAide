@@ -1,11 +1,65 @@
-﻿; Translate selected text for GoldenDict
-GetInstallPath(ProgramName) {
-    SoftwareKey := (A_Is64bitOS = 0 ? "Software" : "Software\WOW6432Node")
-    RegRead, FullFileName, HKEY_LOCAL_MACHINE, %SoftwareKey%\Microsoft\Windows\CurrentVersion\Uninstall\%ProgramName%, UninstallString
-    SplitPath, FullFileName,, InstallPath
+﻿; Auto-translate selected text by GoldenDict
+
+GetInstallPath(ProgramName, RegRoot, SoftwareKey) {
+    RegRead, FullFileName, %RegRoot%, %SoftwareKey%\Microsoft\Windows\CurrentVersion\Uninstall\%ProgramName%, UninstallString
+    SplitPath, FullFileName, , InstallPath
     return %InstallPath%
 }
-GoldenDict := GetInstallPath("GoldenDict") . "\GoldenDict.exe"
+
+SearchExeByRegistry(ProgramName) {
+    RegRoots := ["HKEY_LOCAL_MACHINE", "HKEY_CURRENT_USER"]
+    RegKeys := ["Software"]
+    if A_Is64bitOS
+        RegKeys.Push("Software\WOW6432Node")
+
+    Exename := ProgramName . ".exe"
+    for i, root in RegRoots
+    {
+        for j, key in RegKeys
+        {
+            InstallPath := GetInstallPath(ProgramName, root, key)
+            if !ErrorLevel and InstallPath
+            {
+                FullPath := InstallPath . "\" . Exename
+                if FileExist(FullPath)
+                    return FullPath
+            }
+        }
+    }
+
+    return ""
+}
+
+Loop
+{
+    Found := false
+    IniRead, GoldenDict, config.ini, default, GoldenDict, %A_Space%
+    if GoldenDict
+    {
+        Found := FileExist(GoldenDict)
+    }
+    else
+    {
+        GoldenDict := SearchExeByRegistry("GoldenDict")
+        if GoldenDict
+            Found = true
+        else
+        {
+            GoldenDict := "GoldenDict.exe"
+            Found := FileExist(GoldenDict)
+        }
+    }
+    if Found
+        break
+    else
+    {
+        MsgBox, 5, , File %GoldenDict% not found.
+        IfMsgBox, Retry
+            continue
+        else
+            ExitApp, 1
+    }
+}
 run, %GoldenDict%
 
 GroupAdd, DontActiveGroup, ahk_class ExploreWClass  ; Disable Explorer window. Unused on Vista and later
@@ -151,6 +205,7 @@ TranslateRoutine:
         return
     }
     selected := """" . selected . """"
-    run, %GoldenDict% %selected%
+    if FileExist(GoldenDict)
+        run, %GoldenDict% %selected%
 }
 return
